@@ -6,6 +6,59 @@ defmodule Libbitcoin.Client do
   @default_timeout 2000
   @hz 10
 
+  @empty_commands [
+    "blockchain.fetch_last_height",
+    "protocol.total_connections"
+  ]
+
+  @height_commands [
+    "blockchain.fetch_block_header",
+  ]
+
+  @hash_commands [
+    "blockchain.fetch_block_height",
+    "blockchain.fetch_block_transaction_hashes",
+    "blockchain.fetch_transaction_index",
+    "blockchain.fetch_transaction",
+    "blockchain.fetch_transaction2",
+    "transaction_pool.fetch_transaction",
+    "transaction_pool.fetch_transaction2",
+  ]
+
+  @output_point_commands [
+    "blockchain.fetch_spend"
+  ]
+
+  @stealth_commands [
+    "blockchain.fetch_stealth",
+    "blockchain.fetch_stealth2",
+    "blockchain.fetch_stealth_transaction_hashes"
+  ]
+
+  @history1_commands [
+   "address.fetch_history",
+  ]
+
+  @history2_commands [
+   "address.fetch_history2",
+   "blockchain.fetch_history",
+   "blockchain.fetch_history3"
+  ]
+
+  @history_commands @history1_commands ++ @history2_commands
+
+  @transaction_commands [
+   "transaction_pool.validate",
+   "transaction_pool.validate2",
+   "transaction_pool.broadcast",
+   "protocol.broadcast_transaction"
+  ]
+
+  @block_commands [
+    "blockchain.broadcast",
+    "blockchain.validate"
+  ]
+
   defstruct [context: nil, socket: nil, requests: %{}, timeout: 1000]
 
   def start_link(uri, options \\ %{}) do
@@ -17,93 +70,185 @@ defmodule Libbitcoin.Client do
   end
 
   def block_height(client, block_hash, owner \\ self) do
-    cast(client, "blockchain.fetch_block_height", reverse_hash(block_hash), owner)
+    cast(client, "blockchain.fetch_block_height", [block_hash], owner)
   end
 
   def block_header(client, height, owner \\ self) when is_integer(height) do
-    cast(client, "blockchain.fetch_block_header", encode_int(height), owner)
+    cast(client, "blockchain.fetch_block_header", [height], owner)
   end
 
   def block_transaction_hashes(client, hash, owner \\ self) when is_binary(hash) do
-    cast(client, "blockchain.fetch_block_transaction_hashes", reverse_hash(hash), owner)
+    cast(client, "blockchain.fetch_block_transaction_hashes", [hash], owner)
   end
 
-  def blockchain_transaction(client, txid, owner \\ self) do
-    cast(client, "blockchain.fetch_transaction", reverse_hash(txid), owner)
+  def blockchain_transaction(client, hash, owner \\ self) do
+    cast(client, "blockchain.fetch_transaction", [hash], owner)
   end
 
-  def pool_transaction(client, txid, owner \\ self) do
-    cast(client, "transaction_pool.fetch_transaction", reverse_hash(txid), owner)
+  def blockchain_transaction2(client, hash, owner \\ self) do
+    cast(client, "blockchain.fetch_transaction2", [hash], owner)
   end
 
-  def transaction_index(client, txid, owner \\ self) do
-    cast(client, "blockchain.fetch_transaction_index", reverse_hash(txid), owner)
+  def pool_transaction(client, hash, owner \\ self) do
+    cast(client, "transaction_pool.fetch_transaction", [hash], owner)
   end
 
-  def spend(client, txid, index, owner \\ self) do
-    cast(client, "blockchain.fetch_spend", reverse_hash(txid) <> encode_int(index), owner)
+  def pool_transaction2(client, hash, owner \\ self) do
+    cast(client, "transaction_pool.fetch_transaction2", [hash], owner)
   end
 
-  def stealth(client, bits, height \\ 0, owner \\ self) do
-    bitfield = encode_stealth(bits)
-    bitfield_size = byte_size(bitfield)
-    size = byte_size(bits)
-    cast(client, "blockchain.fetch_stealth",
-      << size :: unsigned-integer-size(8),
-         bitfield :: binary-size(bitfield_size),
-         height :: unsigned-integer-size(32)>>, owner)
+  def transaction_index(client, hash, owner \\ self) do
+    cast(client, "blockchain.fetch_transaction_index", [hash], owner)
+  end
+
+  def spend(client, hash, index, owner \\ self) do
+    cast(client, "blockchain.fetch_spend", [hash, index], owner)
+  end
+
+  def stealth(client, bits, prefix, owner \\ self) do
+    cast(client, "blockchain.fetch_stealth", [bits, prefix], owner)
+  end
+
+  def stealth2(client, bits, prefix, owner \\ self) do
+    cast(client, "blockchain.fetch_stealth2", [bits, prefix], owner)
   end
 
   def address_history(client, address, height \\ 0,  owner \\ self) do
-    {prefix, decoded} = decode_base58check(address)
-    cast(client, "address.fetch_history",
-      <<prefix :: binary-size(1),
-        reverse_hash(decoded) :: binary-size(20),
-        encode_int(height) :: binary>>, owner)
+    cast(client, "address.fetch_history", [address, height], owner)
   end
 
   def address_history2(client, address, height \\ 0,  owner \\ self) do
-    {prefix, decoded} = decode_base58check(address)
-    cast(client, "address.fetch_history2",
-      <<prefix :: binary-size(1),
-        decoded :: binary-size(20),
-        encode_int(height) :: binary>>, owner)
+    cast(client, "address.fetch_history2", [address, height], owner)
   end
 
   def blockchain_history(client, address, height \\ 0,  owner \\ self) do
-    {prefix, decoded} = decode_base58check(address)
-    cast(client, "blockchain.fetch_history",
-      <<prefix :: binary-size(1),
-        decoded :: binary-size(20),
-        encode_int(height) :: binary>>, owner)
+    cast(client, "blockchain.fetch_history", [address, height], owner)
   end
 
   def blockchain_history3(client, address, height \\ 0,  owner \\ self) do
-    {prefix, decoded} = decode_base58check(address)
-    cast(client, "blockchain.fetch_history3",
-      <<decoded :: binary-size(20),
-        encode_int(height) :: binary>>, owner)
+    cast(client, "blockchain.fetch_history3", [address, height], owner)
   end
 
   def total_connections(client, owner \\ self) do
-    cast(client, "protocol.total_connections", "", owner)
+    cast(client, "protocol.total_connections", [], owner)
   end
 
   def validate(client, tx, owner \\ self) do
-    cast(client, "transaction_pool.validate", tx, owner)
+    cast(client, "transaction_pool.validate", [tx], owner)
+  end
+
+  def validate2(client, tx, owner \\ self) do
+    cast(client, "transaction_pool.validate2", [tx], owner)
+  end
+
+  def blockchain_validate(client, block, owner \\ self) do
+    cast(client, "blockchain.validate", [block], owner)
   end
 
   def broadcast_transaction(client, tx, owner \\ self) do
-    cast(client, "protocol.broadcast_transaction", tx, owner)
+    cast(client, "protocol.broadcast_transaction", [tx], owner)
+  end
+
+  def transaction_pool_broadcast(client, tx, owner \\ self) do
+    cast(client, "transaction_pool.broadcast", [tx], owner)
+  end
+
+  def call(client, command, argv, timeout \\ 1000) do
+    {:ok, ref} = cast(client, command, argv)
+    receive do
+      {:libbitcoin_client, ^command, ^ref, reply} ->
+        {:ok, reply}
+      {:libbitcoin_client_error, ^command, ^ref, reply} ->
+        {:error, reply}
+    after
+      timeout ->
+        {:error, :timeout}
+    end
+  end
+
+  def cast(client, command, argv) do
+    cast(client, command, argv, self)
+  end
+
+  def cast(client, command, [], owner)
+    when command in @empty_commands do
+    cast(client, command, "", owner)
+  end
+  def cast(client, command, [height], owner)
+    when command in @height_commands do
+    cast(client, command, encode_int(height), owner)
+  end
+  def cast(client, command, [hash], owner)
+    when command in @hash_commands
+    and is_binary(hash) do
+    cast(client, command, reverse_hash(hash), owner)
+  end
+  def cast(client, command, [hash, index], owner)
+    when command in @output_point_commands do
+    cast(client, command, reverse_hash(hash) <> encode_int(index), owner)
+  end
+  def cast(client, command, [bits, prefix], owner)
+    when command in @stealth_commands
+    and is_binary(bits)
+    and is_integer(prefix) do
+    bitfield = encode_stealth(bits)
+    bitfield_size = byte_size(bitfield)
+    size = byte_size(bits)
+    cast(client, command, <<size :: unsigned-integer-size(8),
+      bitfield :: binary-size(bitfield_size),
+      prefix :: unsigned-integer-size(32)>>, owner)
+  end
+  def cast(client, command, [address, height], owner)
+    when command in @history1_commands
+    and is_binary(address)
+    and is_integer(height) do
+    {prefix, decoded} = decode_base58check(address)
+    cast(client, command, <<prefix :: binary-size(1),
+      decoded :: binary-size(20),
+      encode_int(height) :: binary>>, owner)
+  end
+  def cast(client, command, [address, height], owner)
+    when command in @history2_commands
+    and is_binary(address)
+    and is_integer(height) do
+    {_prefix, decoded} = decode_base58check(address)
+    cast(client, command, <<decoded :: binary-size(20),
+      encode_int(height) :: binary>>, owner)
+  end
+  def cast(client, command, [transaction], owner)
+    when command in @transaction_commands and is_binary(transaction) do
+    cast(client, command, transaction, owner)
+  end
+  def cast(client, command, [block], owner)
+    when command in @block_commands and is_binary(block) do
+    cast(client, command, block, owner)
+  end
+  def cast(_client, _command, argv, _owner)
+    when is_list(argv) do {:error, :badarg}
+  end
+  def cast(client, command, argv, owner) when is_binary(argv) do
+    request_id = new_request_id
+    case GenServer.cast(client, {:command, request_id, command, argv, owner}) do
+      :ok -> {:ok, request_id}
+      reply -> reply
+    end
   end
 
   @divisor 1 <<< 63
-  def spend_checksum(hash, index) do
+  def spend_checksum_v1(hash, index) do
     encoded_index = <<index :: little-unsigned-size(32)>>
     <<_ :: binary-size(4), hash_value :: binary-size(4), _ :: binary>> = reverse_hash(hash)
     encoded_value = <<encoded_index :: binary-size(4), hash_value :: binary-size(4)>>
     value = :binary.decode_unsigned(encoded_value, :little)
     value &&& (@divisor - 1)
+  end
+
+  def spend_checksum_v2(hash, index) do
+    :libbitcoin.spend_checksum(hash, index)
+  end
+
+  def spend_checksum(hash, index) do
+    spend_checksum_v2(hash, index)
   end
 
   def init([uri, %{timeout: timeout}]) do
@@ -153,14 +298,6 @@ defmodule Libbitcoin.Client do
     end
   end
 
-  defp cast(client, command, argv, owner) do
-    request_id = new_request_id
-    case GenServer.cast(client, {:command, request_id, command, argv, owner}) do
-      :ok -> {:ok, request_id}
-      reply -> reply
-    end
-  end
-
   defp send_command(request_id, command, payload, state) do
     case send_payload(request_id, command, payload, state) do
       :error -> {:error, :request_error, state}
@@ -187,7 +324,7 @@ defmodule Libbitcoin.Client do
   end
   defp decode_command(command,
     <<@success :: little-integer-unsigned-size(32), transaction :: binary>> )
-    when command in ["blockchain.fetch_transaction", "transaction_pool.fetch_transaction"] do
+    when command in @hash_commands do
     {:ok, transaction}
   end
   defp decode_command("blockchain.fetch_transaction_index",
@@ -201,15 +338,17 @@ defmodule Libbitcoin.Client do
     {:error, error_code(5)}
   end
   defp decode_command("blockchain.fetch_spend",
-    <<@success :: little-integer-unsigned-size(32), txid :: binary-size(32),
+    <<@success :: little-integer-unsigned-size(32), hash :: binary-size(32),
       index :: little-integer-unsigned-size(32)>>) do
 
-    {:ok, {reverse_hash(txid), index}}
+    {:ok, {reverse_hash(hash), index}}
   end
-  defp decode_command("blockchain.fetch_stealth", <<@success :: little-integer-unsigned-size(32)>>) do
+  defp decode_command(command, <<@success :: little-integer-unsigned-size(32)>>)
+    when command in ["blockchain.fetch_stealth", "blockchain.fetch_stealth2"] do
     {:ok, []}
   end
-  defp decode_command("blockchain.fetch_stealth", <<@success :: little-integer-size(32), rows :: binary>>) do
+  defp decode_command(command, <<@success :: little-integer-size(32), rows :: binary>>)
+    when command in ["blockchain.fetch_stealth", "blockchain.fetch_stealth2"] do
     decode_stealth(rows, [])
   end
   defp decode_command("address.fetch_history", <<@success :: little-integer-unsigned-size(32)>>) do
@@ -227,7 +366,12 @@ defmodule Libbitcoin.Client do
     <<@success :: little-integer-size(32), history :: binary>>) do
     decode_history2(history, [])
   end
-  defp decode_command("transaction_pool.validate",
+  defp decode_command(command,
+    <<ec :: little-integer-unsigned-size(32), _any :: binary>>)
+    when command in @transaction_commands do
+    {:ok, error_code(ec)}
+  end
+  defp decode_command("transaction_pool.validate2",
     <<ec :: little-integer-unsigned-size(32), _any :: binary>>) do
     {:ok, error_code(ec)}
   end
@@ -382,9 +526,9 @@ defmodule Libbitcoin.Client do
     end
   end
 
-  def transform_block_transactions_hashes(<<"">>, txids), do: Enum.reverse(txids)
-  def transform_block_transactions_hashes(<<txid :: binary-size(32), rest :: binary>>, txids) do
-    transform_block_transactions_hashes(rest, [reverse_hash(txid)|txids])
+  def transform_block_transactions_hashes(<<"">>, hashes), do: Enum.reverse(hashes)
+  def transform_block_transactions_hashes(<<hash :: binary-size(32), rest :: binary>>, hashes) do
+    transform_block_transactions_hashes(rest, [reverse_hash(hash)|hashes])
   end
 
   @stealth_block_size 8
