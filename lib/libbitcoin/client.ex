@@ -235,20 +235,12 @@ defmodule Libbitcoin.Client do
   end
 
   @divisor 1 <<< 63
-  def spend_checksum_v1(hash, index) do
+  def spend_checksum(hash, index) do
     encoded_index = <<index :: little-unsigned-size(32)>>
     <<_ :: binary-size(4), hash_value :: binary-size(4), _ :: binary>> = reverse_hash(hash)
     encoded_value = <<encoded_index :: binary-size(4), hash_value :: binary-size(4)>>
     value = :binary.decode_unsigned(encoded_value, :little)
     value &&& (@divisor - 1)
-  end
-
-  def spend_checksum_v2(hash, index) do
-    :libbitcoin.spend_checksum(hash, index)
-  end
-
-  def spend_checksum(hash, index) do
-    spend_checksum_v2(hash, index)
   end
 
   def init([uri, %{timeout: timeout}]) do
