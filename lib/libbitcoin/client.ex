@@ -204,7 +204,7 @@ defmodule Libbitcoin.Client do
     and is_integer(height) do
     {prefix, decoded} = decode_base58check(address)
     cast(client, command, <<prefix :: binary-size(1),
-      decoded :: binary-size(20),
+      reverse_hash(decoded) :: binary-size(20),
       encode_int(height) :: binary>>, owner)
   end
   def cast(client, command, [address, height], owner)
@@ -223,12 +223,13 @@ defmodule Libbitcoin.Client do
     when command in @block_commands and is_binary(block) do
     cast(client, command, block, owner)
   end
-  def cast(_client, _command, argv, _owner)
-    when is_list(argv) do {:error, :badarg}
+  def cast(_client, _command, argv, _owner) when is_list(argv) do
+    {:error, :badarg}
   end
   def cast(client, command, argv, owner) when is_binary(argv) do
     request_id = new_request_id
-    case GenServer.cast(client, {:command, request_id, command, argv, owner}) do
+    payload = {:command, request_id, command, argv, owner}
+    case GenServer.cast(client, payload) do
       :ok -> {:ok, request_id}
       reply -> reply
     end

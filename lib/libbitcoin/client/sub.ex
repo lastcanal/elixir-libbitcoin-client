@@ -68,15 +68,27 @@ defmodule Libbitcoin.Client.Sub do
     {:noreply, state}
   end
 
-  def handle_info({sub, [<<sequence :: unsigned-little-size(16)>>, <<_height :: little-unsigned-integer-size(64) >>]}, %State{endpoint: :heartbeat, sub: sub} = state) do
-    {:ok, state} = send_to_controller {:libbitcoin_client, :heartbeat, sequence}, state
+  def handle_info({sub, [<<_sequence :: unsigned-little-size(16)>>, <<beat :: little-unsigned-integer-size(64) >>]}, %State{endpoint: :heartbeat, sub: sub} = state) do
+    {:ok, state} = send_to_controller {:libbitcoin_client, :heartbeat, beat}, state
+    {:noreply, state}
+  end
+  def handle_info({sub, [<<beat :: little-unsigned-integer-size(32) >>]}, %State{endpoint: :heartbeat, sub: sub} = state) do
+    {:ok, state} = send_to_controller {:libbitcoin_client, :heartbeat, beat}, state
     {:noreply, state}
   end
   def handle_info({sub, [<<_sequence :: unsigned-little-size(16)>>, tx]}, %State{endpoint: :transaction, sub: sub} = state) do
     {:ok, state} = send_to_controller {:libbitcoin_client, :transaction, tx}, state
     {:noreply, state}
   end
+  def handle_info({sub, [tx]}, %State{endpoint: :transaction, sub: sub} = state) do
+    {:ok, state} = send_to_controller {:libbitcoin_client, :transaction, tx}, state
+    {:noreply, state}
+  end
   def handle_info({sub, [<<_sequence :: unsigned-little-size(16)>>, <<height :: unsigned-little-size(32)>>, header | txids] = block}, %State{endpoint: :block, sub: sub} = state) do
+    {:ok, state} = send_to_controller {:libbitcoin_client, :block, {height, header, txids}}, state
+    {:noreply, state}
+  end
+  def handle_info({sub, [<<height :: unsigned-little-size(32)>>, header | txids] = block}, %State{endpoint: :block, sub: sub} = state) do
     {:ok, state} = send_to_controller {:libbitcoin_client, :block, {height, header, txids}}, state
     {:noreply, state}
   end
