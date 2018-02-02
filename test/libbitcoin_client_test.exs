@@ -143,7 +143,7 @@ defmodule BitcoinClientTest do
 
   test "spend_checksum v1" do
     hash = Base.decode16!("ab00248cd12452c2c45be7ca91899fd8e174595b4d16e2f2e3c92dedbb1d8cea", case: :lower)
-    assert C.spend_checksum_v1(hash, 0) == 7190328776004206592
+    assert C.spend_checksum(hash, 0) == 7190328776004206592
   end
 
   test "call" do

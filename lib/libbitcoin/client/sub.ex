@@ -1,10 +1,10 @@
 defmodule Libbitcoin.Client.Sub do
   use GenServer
 
-  alias __MODULE__, as: State
-
-  defstruct [endpoint: nil, context: nil, socket: nil, sub: nil,
-             controlling_process: nil, msg_state: nil, queue: :queue.new()]
+  defmodule State do
+    defstruct [endpoint: nil, context: nil, socket: nil, sub: nil,
+               controlling_process: nil, msg_state: nil, queue: :queue.new()]
+  end
 
   @endpoints [:block, :transaction, :heartbeat, :radar]
   @queue_size 100
@@ -35,7 +35,7 @@ defmodule Libbitcoin.Client.Sub do
 
   @spec start_link(endpoints, :http_uri.uri) :: GenServer.on_start
   def start_link(endpoint, uri) when endpoint in @endpoints do
-    GenServer.start_link(State, [endpoint, uri])
+    GenServer.start_link(__MODULE__, [endpoint, uri])
   end
 
   def init([endpoint, uri]) do
@@ -68,12 +68,12 @@ defmodule Libbitcoin.Client.Sub do
     {:noreply, state}
   end
 
-  def handle_info({sub, [<<_sequence :: unsigned-little-size(16)>>, <<beat :: little-unsigned-integer-size(64) >>]}, %State{endpoint: :heartbeat, sub: sub} = state) do
-    {:ok, state} = send_to_controller {:libbitcoin_client, :heartbeat, beat}, state
+  def handle_info({sub, [<<_sequence :: unsigned-little-size(16)>>, <<height :: little-unsigned-integer-size(64) >>]}, %State{endpoint: :heartbeat, sub: sub} = state) do
+    {:ok, state} = send_to_controller {:libbitcoin_client, :heartbeat, height}, state
     {:noreply, state}
   end
-  def handle_info({sub, [<<beat :: little-unsigned-integer-size(32) >>]}, %State{endpoint: :heartbeat, sub: sub} = state) do
-    {:ok, state} = send_to_controller {:libbitcoin_client, :heartbeat, beat}, state
+  def handle_info({sub, [<<_sequence :: little-unsigned-integer-size(32) >>]}, %State{endpoint: :heartbeat, sub: sub} = state) do
+    {:ok, state} = send_to_controller {:libbitcoin_client, :heartbeat, 0}, state
     {:noreply, state}
   end
   def handle_info({sub, [<<_sequence :: unsigned-little-size(16)>>, tx]}, %State{endpoint: :transaction, sub: sub} = state) do

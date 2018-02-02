@@ -1,5 +1,4 @@
 defmodule Libbitcoin.Client do
-  alias Libbitcoin.Client
   use Bitwise
   use Libbitcoin.Client.ErrorCode
 
@@ -59,7 +58,9 @@ defmodule Libbitcoin.Client do
     "blockchain.validate"
   ]
 
-  defstruct [context: nil, socket: nil, requests: %{}, timeout: 1000]
+  defmodule State do
+    defstruct [context: nil, socket: nil, requests: %{}, timeout: 1000]
+  end
 
   def start_link(uri, options \\ %{}) do
     GenServer.start_link(__MODULE__, [uri, options])
@@ -113,20 +114,20 @@ defmodule Libbitcoin.Client do
     cast(client, "blockchain.fetch_stealth2", [bits, prefix], owner)
   end
 
-  def address_history(client, address, height \\ 0,  owner \\ self) do
-    cast(client, "address.fetch_history", [address, height], owner)
+  def address_history(client, address_hash, height \\ 0,  owner \\ self) do
+    cast(client, "address.fetch_history", [address_hash, height], owner)
   end
 
-  def address_history2(client, address, height \\ 0,  owner \\ self) do
-    cast(client, "address.fetch_history2", [address, height], owner)
+  def address_history2(client, address_hash, height \\ 0,  owner \\ self) do
+    cast(client, "address.fetch_history2", [address_hash, height], owner)
   end
 
-  def blockchain_history(client, address, height \\ 0,  owner \\ self) do
-    cast(client, "blockchain.fetch_history", [address, height], owner)
+  def blockchain_history(client, address_hash, height \\ 0,  owner \\ self) do
+    cast(client, "blockchain.fetch_history", [address_hash, height], owner)
   end
 
-  def blockchain_history3(client, address, height \\ 0,  owner \\ self) do
-    cast(client, "blockchain.fetch_history3", [address, height], owner)
+  def blockchain_history3(client, address_hash, height \\ 0,  owner \\ self) do
+    cast(client, "blockchain.fetch_history3", [address_hash, height], owner)
   end
 
   def total_connections(client, owner \\ self) do
@@ -198,21 +199,19 @@ defmodule Libbitcoin.Client do
       bitfield :: binary-size(bitfield_size),
       prefix :: unsigned-integer-size(32)>>, owner)
   end
-  def cast(client, command, [address, height], owner)
+  def cast(client, command, [address_hash, height], owner)
     when command in @history1_commands
-    and is_binary(address)
+    and is_binary(address_hash)
     and is_integer(height) do
-    {prefix, decoded} = decode_base58check(address)
-    cast(client, command, <<prefix :: binary-size(1),
-      reverse_hash(decoded) :: binary-size(20),
+    cast(client, command, <<0 :: binary-size(1), address_hash :: binary-size(1),
+      reverse_hash(address_hash) :: binary-size(20),
       encode_int(height) :: binary>>, owner)
   end
-  def cast(client, command, [address, height], owner)
+  def cast(client, command, [address_hash, height], owner)
     when command in @history2_commands
-    and is_binary(address)
+    and is_binary(address_hash)
     and is_integer(height) do
-    {_prefix, decoded} = decode_base58check(address)
-    cast(client, command, <<decoded :: binary-size(20),
+    cast(client, command, <<address_hash :: binary-size(20),
       encode_int(height) :: binary>>, owner)
   end
   def cast(client, command, [transaction], owner)
@@ -250,7 +249,7 @@ defmodule Libbitcoin.Client do
     :ok = :czmq.zctx_set_linger ctx, 0
     case :czmq.zsocket_connect socket, uri do
       :ok ->
-        {:ok, %Client{context: ctx, socket: socket, timeout: timeout}}
+        {:ok, %State{context: ctx, socket: socket, timeout: timeout}}
       {:error, _} = error ->
         {:stop, error}
     end
@@ -265,10 +264,10 @@ defmodule Libbitcoin.Client do
     case send_command(request_id, command, argv, state) do
       {:ok, state} ->
         {:noreply, state}
-      {:error, error, %Client{requests: requests} = state} ->
+      {:error, error, %State{requests: requests} = state} ->
         :ok = send_reply({:error, error}, command, request_id, owner)
         {:ok, requests} = clear_request(request_id, requests)
-        {:ok, state} = retry_receive_payload(%Client{state | requests: requests})
+        {:ok, state} = retry_receive_payload(%State{state | requests: requests})
         {:noreply, state}
     end
   end
@@ -280,14 +279,14 @@ defmodule Libbitcoin.Client do
     end
   end
 
-  def handle_info({:timeout, request_id}, %Client{requests: requests} = state) do
+  def handle_info({:timeout, request_id}, %State{requests: requests} = state) do
     case Map.fetch(requests, request_id) do
       :error ->
         {:noreply, state}
       {:ok, owner} when is_pid(owner) ->
         send_reply({:error, :timeout}, nil, request_id, owner)
         {:ok, requests} = clear_request(request_id, requests)
-        {:noreply, %Client{state | requests: requests}}
+        {:noreply, %State{state | requests: requests}}
     end
   end
 
@@ -314,11 +313,6 @@ defmodule Libbitcoin.Client do
     <<@success :: little-integer-unsigned-size(32), hashes :: binary>>) do
     hashes = transform_block_transactions_hashes(hashes, [])
     {:ok, hashes}
-  end
-  defp decode_command(command,
-    <<@success :: little-integer-unsigned-size(32), transaction :: binary>> )
-    when command in @hash_commands do
-    {:ok, transaction}
   end
   defp decode_command("blockchain.fetch_transaction_index",
     <<@success :: little-integer-unsigned-size(32),
@@ -359,11 +353,6 @@ defmodule Libbitcoin.Client do
     <<@success :: little-integer-size(32), history :: binary>>) do
     decode_history2(history, [])
   end
-  defp decode_command(command,
-    <<ec :: little-integer-unsigned-size(32), _any :: binary>>)
-    when command in @transaction_commands do
-    {:ok, error_code(ec)}
-  end
   defp decode_command("transaction_pool.validate2",
     <<ec :: little-integer-unsigned-size(32), _any :: binary>>) do
     {:ok, error_code(ec)}
@@ -375,6 +364,16 @@ defmodule Libbitcoin.Client do
   defp decode_command("protocol.total_connections",
     <<@success :: little-integer-unsigned-size(32), connections :: little-integer-unsigned-size(32)>>) do
    {:ok, connections}
+  end
+  defp decode_command(command,
+    <<@success :: little-integer-unsigned-size(32), transaction :: binary>> )
+    when command in @hash_commands do
+    {:ok, transaction}
+  end
+  defp decode_command(command,
+    <<ec :: little-integer-unsigned-size(32), _any :: binary>>)
+    when command in @transaction_commands do
+    {:ok, error_code(ec)}
   end
   defp decode_command(_command, <<ec :: little-integer-unsigned-size(32),
                                  _rest :: binary>>) when ec != 0 do
@@ -437,7 +436,7 @@ defmodule Libbitcoin.Client do
   defp history_row_type(<<1>>), do: :spend
 
   defp send_payload(request_id, command, payload,
-    %Client{socket: socket, timeout: timeout} = state) do
+    %State{socket: socket, timeout: timeout} = state) do
     bin_request_id = <<request_id :: unsigned-little-integer-size(32)>>
     _timerref = schedule_timeout(request_id, timeout)
     case :czmq.zsocket_send_all(socket, [command, bin_request_id, payload]) do
@@ -448,7 +447,7 @@ defmodule Libbitcoin.Client do
     end
   end
 
-  defp receive_payload(%Client{socket: socket} = state) do
+  defp receive_payload(%State{socket: socket} = state) do
     case :czmq.zframe_recv_all(socket) do
       {:ok, reply} ->
         handle_reply(reply, state)
@@ -458,26 +457,26 @@ defmodule Libbitcoin.Client do
   end
 
   defp handle_reply([command, <<request_id :: integer-little-unsigned-size(32)>>, reply],
-                    %Client{requests: requests} = state) do
+                    %State{requests: requests} = state) do
     case Map.fetch(requests, request_id) do
       {:ok, owner} when is_pid(owner) ->
         decode_command(command, reply) |> send_reply(command, request_id, owner)
         {:ok, requests} = clear_request(request_id, requests)
-        {:ok, %Client{state | requests: requests}}
+        {:ok, %State{state | requests: requests}}
       :error ->
         {:error, :not_found}
     end
   end
 
-  defp add_request(request_id, owner, %Client{requests: requests} = state) do
-    {:ok, %Client{state | requests: Map.put(requests, request_id, owner)}}
+  defp add_request(request_id, owner, %State{requests: requests} = state) do
+    {:ok, %State{state | requests: Map.put(requests, request_id, owner)}}
   end
 
   defp clear_request(request_id, requests) do
     {:ok,  Map.delete(requests, request_id)}
   end
 
-  defp retry_receive_payload(%Client{requests: []} = state) do
+  defp retry_receive_payload(%State{requests: []} = state) do
     {:ok, state}
   end
   defp retry_receive_payload(state) do
@@ -489,8 +488,8 @@ defmodule Libbitcoin.Client do
     :erlang.send_after(timeout, self, {:timeout, request_id})
   end
 
-  defp send_reply({:ok, decoded}, command, request_id, owner) do
-    send(owner, {:libbitcoin_client, command, request_id, decoded})
+  defp send_reply({:ok, reply}, command, request_id, owner) do
+    send(owner, {:libbitcoin_client, command, request_id, reply})
   end
 
   defp send_reply({:error, reason}, command, request_id, owner) do
@@ -508,15 +507,6 @@ defmodule Libbitcoin.Client do
   defp reverse_hash(<<>>, acc), do: acc
   defp reverse_hash(<<h :: binary-size(1), rest :: binary>>, acc) do
     reverse_hash(rest, <<h :: binary, acc :: binary>>)
-  end
-
-  def decode_base58check(address) do
-    <<version::binary-size(1), pkh::binary-size(20), checksum::binary-size(4)>> =
-      :base58.base58_to_binary(to_char_list(address))
-    case  :crypto.hash(:sha256, :crypto.hash(:sha256, version <> pkh)) do
-      <<^checksum :: binary-size(4), _ :: binary>> -> {version, pkh}
-      _ -> {:error, :invalid_checksum}
-    end
   end
 
   def transform_block_transactions_hashes(<<"">>, hashes), do: Enum.reverse(hashes)
